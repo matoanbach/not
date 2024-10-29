@@ -14,7 +14,9 @@ const authFile = path.join(__dirname, "./playwright/.auth/user.json");
 var buf = fs.readFileSync(authFile);
 
 // URL of a random company
-const companyURL = "https://www.linkedin.com/company/celestica/jobs/";
+const companyURL = "https://www.linkedin.com/company/mdaspace/jobs/";
+
+// LINKEDIN properties
 const job_list_div_class_name = ".scaffold-layout__list-container";
 const job_li_tag_pattern = 'li[id^="ember"]';
 const job_des_div_class_name =
@@ -22,6 +24,9 @@ const job_des_div_class_name =
 const jobs_apply_button = ".jobs-apply-button--top-card";
 var isHeadless = false;
 var allowEasyApply = false;
+const job_filter_li_class_name =
+  'li[class="search-reusables__filter-value-item"]';
+const applyFilterKeyword = new Set(["Past week", "Internship", "Canada"]);
 
 const browsing = async () => {
   let context;
@@ -40,16 +45,22 @@ const browsing = async () => {
   }
 
   const page = await context.newPage();
+  // await page.pause();
   const jobs = await visitCompany(page, companyURL);
   console.log(jobs);
+
+  await context.close();
   await browser.close();
 };
 
 const visitCompany = async (page, companyURL) => {
-  await page.pause();
+  // await page.pause();
   await page.goto(companyURL);
+  await click(page, page.locator('text="Show all jobs"'));
+  // await page.waitForLoadState();
+  await page.waitForTimeout(1000);
 
-  await page.locator('text="Show all jobs"').click();
+  // await page.locator('text="Show all jobs"').click();
 
   // Apply filter
   await applyFilter(page);
@@ -57,33 +68,124 @@ const visitCompany = async (page, companyURL) => {
   // Extract jobs
   const results = await browserJobs(page);
   return results;
+  // return [];
 };
 
+// const applyFilter = async (page) => {
+//   await page.pause();
+//   await page.locator("text=All filters", { exact: true }).click();
+//   const filter_list = await page.locator(job_filter_li_class_name);
+//   const count = await filter_list.count();
+//   var filter_keywords;
+//   for (let i = 0; i < count; i++) {
+//     const rawString = await filter_list.nth(i).textContent();
+//     filter_keywords = rawString
+//       .replace(/\s{2,}/g, ";;")
+//       .split(";;")
+//       .filter((str) => str.length > 0 && !str.toLowerCase().includes("filter"));
+//   }
+//   filter_keywords.forEach(async (keyword) => {
+//     console.log(keyword);
+//     if (applyFilterKeyword.has(keyword)) {
+//       const count = await filter_list.locator(keyword).count();
+//       if (count > 1) {
+//         await click(
+//           filter_list.locator(jobs_apply_button, { exact: true }).first()
+//         );
+//       } else {
+//         await click(filter_list.locator(jobs_apply_button, { exact: true }));
+//       }
+//     }
+//   });
+
+//   await page.waitForTimeout(10000);
+//   return;
+// };
+
 const applyFilter = async (page) => {
-  return;
+  // Remove pause unless needed for debugging
+  // await page.pause();
+
+  // Click on "All filters"
+  await page.locator('text="All filters"', { exact: true }).click();
+
+  // Wait for the filters panel to appear
+  await page.waitForSelector(job_filter_li_class_name);
+
+  // Locate all filter list items
+  const filter_list = await page.locator(job_filter_li_class_name);
+  const count = await filter_list.count();
+
+  // Initialize an array to accumulate filter keywords
+  let filter_keywords = [];
+
+  // Collect keywords from all filter items
+  for (let i = 0; i < count; i++) {
+    const rawString = await filter_list.nth(i).textContent();
+
+    // Process the raw string to extract keywords
+    const keywords = rawString
+      .replace(/\s{2,}/g, ";;")
+      .split(";;")
+      .map((str) => str.trim())
+      .filter((str) => str.length > 0 && !str.toLowerCase().includes("filter"));
+
+    // Accumulate keywords
+    filter_keywords = filter_keywords.concat(keywords);
+  }
+
+  // Ensure applyFilterKeyword is defined, e.g.,
+  // const applyFilterKeyword = new Set(['Keyword1', 'Keyword2']);
+
+  // Iterate over the keywords using for...of to handle async/await properly
+  for (const keyword of filter_keywords) {
+    console.log(keyword);
+    if (applyFilterKeyword.has(keyword)) {
+      // Locate the checkbox or filter option by label or text
+      const filterOption = filter_list.locator(`text="${keyword}"`);
+
+      // Check if the filter option exists
+      const optionCount = await filterOption.count();
+      if (optionCount > 0) {
+        // Click on the filter option
+        await click(page, filterOption.first());
+      } else {
+        console.warn(`Filter option "${keyword}" not found.`);
+      }
+    }
+  }
+
+  // Apply the filters by clicking the "Show results" or equivalent button
+  // Adjust the selector as needed
+  await page.click("text=/show \\d+ results/i");
+
+  // Wait for the results to load
+  // await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(1000);
 };
 
 const browserJobs = async (page) => {
   const results = [];
   // await page.pause();
   let current_page = 1;
-  while (await isVisible(page, current_page)) {
+
+  while (current_page === 1 || (await pageExist(page, current_page))) {
     //use the mouse to scroll down with the space bar to load all jobs first
-    await click(page.getByLabel(`Page ${current_page}`, { exact: true }));
+    await click(page, page.getByLabel(`Page ${current_page}`, { exact: true }));
     await scroll(page, 10);
 
     const job_list_div = await page.locator(job_list_div_class_name);
     const job_list = await job_list_div.locator(job_li_tag_pattern);
     const count = await job_list.count();
 
-    for (let i = 0; i < count; i++) {
-      await click(job_list.nth(i));
+    await page.waitForLoadState();
 
+    for (let i = 0; i < count; i++) {
+      await click(page, job_list.nth(i));
       const urlString = await openLink(page);
       if (urlString === "-1") continue;
 
       const { company, job_title, location } = await extractJob(page);
-
       // get the url string from the link that is just clicked
       results.push({ job_title, company, location, urlString });
     }
@@ -108,19 +210,22 @@ const extractJob = async (body) => {
   return { company, job_title, location };
 };
 
-const isVisible = async (page, current_page) => {
+const pageExist = async (page, current_page) => {
   return await page
     .getByLabel(`Page ${current_page}`, { exact: true })
     .isVisible();
 };
 
-const click = async (elementToClick) => {
-  await elementToClick.click();
+const click = async (page, elementToClick) => {
+  if (await elementToClick.isVisible()) {
+    await elementToClick.click();
+    await page.waitForLoadState();
+  }
 };
 
 const scroll = async (page, turns) => {
   for (let i = 0; i < turns; i++) {
-    await page.mouse.wheel(0, 1000);
+    await page.mouse.wheel(0, 300);
   }
 };
 
@@ -138,7 +243,8 @@ const openLink = async (page) => {
 
   // page promise - reference: https://stackoverflow.com/questions/64277178/how-to-open-the-new-tab-using-playwright-ex-click-the-button-to-open-the-new-s
   const pagePromise = page.context().waitForEvent("page");
-  await page.locator(jobs_apply_button, { exact: true }).first().click();
+  await click(page, page.locator(jobs_apply_button, { exact: true }).first());
+  // await page.locator(jobs_apply_button, { exact: true }).first().click();
   const newPage = await pagePromise;
 
   // Wait for the new page to load completely
