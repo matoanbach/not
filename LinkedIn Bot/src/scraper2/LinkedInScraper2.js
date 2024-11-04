@@ -8,25 +8,29 @@ export class LinkedInScraper2 {
     email,
     password,
     linkedin_url,
-    jobAlerts,
-    selectors
+    linkedin_job_url,
+    selectors,
+    isHeadless,
+    allowEasyApply
   ) {
     this.cookie_path = cookie_path;
     this.filters = new Set(filters);
-    this.jobAlerts = jobAlerts;
     this.email = email;
     this.password = password;
     this.linkedin_url = linkedin_url;
+    this.linkedin_job_url = linkedin_job_url;
     this.selectors = selectors;
-
+    this.isHeadless = isHeadless;
+    this.allowEasyApply = allowEasyApply;
     this.context = null;
     this.browser = null;
     this.page = null;
+    this.visited = new Set(); //a set of urls - to skip overlapping job openings
   }
 
   async setUp() {
     this.browser = await playwright.chromium.launch({
-      headless: false,
+      headless: this.isHeadless,
     });
     if (await this.checkCookie()) {
       console.log("[Set Up]: Done");
@@ -48,7 +52,7 @@ export class LinkedInScraper2 {
         console.log(`checkCookie(): Cookies reused from ${this.cookie_path}`);
       } else {
         this.context = await this.browser.newContext();
-        const temp_page = await this.context.newPage(); // Create a new page to login in
+        const temp_page = await this.context.newPage(); // Create a new temporary page to login in
         await this.signIn(temp_page);
         await temp_page.context().storageState({ path: this.cookie_path });
         await temp_page.close();
@@ -82,20 +86,24 @@ export class LinkedInScraper2 {
     }
   }
   async run() {
-    await this.browse(this.page);
+    return await this.browse(this.page);
   }
 
   async browse(page) {
+    let results = [];
+
     if (!page) this.page = await this.context.newPage();
     // await page.pause();
-    await page.goto("https://www.linkedin.com/jobs/");
+
+    await page.goto(this.linkedin_job_url);
     await page.getByRole("button", { name: "Preferences" }).click();
     await page.getByRole("link", { name: "Job alerts" }).click();
-    await page.getByRole("button", { name: "Show 6 more" }).click();
+    await page.getByRole("button", { name: /Show \d+ more/i }).click();
 
     const linkHandle = await page.getByRole("link", {
-      name: "quality assurance",
+      name: "application developer intern",
     });
+    // await page.pause();
     const parentDivHandle = await linkHandle.locator("xpath=../../../../../.."); // Moves up two levels
     const alertList = await parentDivHandle.locator("li");
     const count = await alertList.count();
@@ -108,29 +116,26 @@ export class LinkedInScraper2 {
       const newPage = await this.context.newPage();
       await newPage.goto(href);
 
-      await newPage.waitForLoadState('load');
+      await newPage.waitForLoadState("load");
+
       // start to browse the job on a new tab
-      const jobs = await this.browThisPage(newPage);
+      let jobs = await this.browseThisPage(newPage);
 
       await newPage.close();
 
-      console.log(jobs);
+      results.push(...jobs);
     }
+    return results;
   }
 
-  async browThisPage(page) {
-    // await page.waitForTimeout(2000);
-    // await page.waitForLoadState('load');
-
-    // if (
-    //   !(await this.page.locator(this.selectors.showAllJobsButton).isVisible())
-    // ) {
-    //   return [];
-    // }
+  async browseThisPage(page) {
     await this.click(page, page.locator(this.selectors.showAllJobsButton));
 
     // start to filter jobs with keywords
-    await this.filter(page);
+    if (!(await this.filter(page))) {
+      // no further action if no job found
+      return [];
+    }
 
     return this.browserJobs(page);
   }
@@ -218,7 +223,7 @@ export class LinkedInScraper2 {
     );
 
     const showResultsButtonText = await showResultButton.textContent();
-    if (showResultsButtonText.includes("Show 0 results")) {
+    if (showResultsButtonText.includes(this.selectors.noJobsFound)) {
       // no job found after applying filter
       return false;
     }
@@ -233,6 +238,7 @@ export class LinkedInScraper2 {
 
   async browserJobs(page) {
     const results = [];
+
     let current_page = 1;
     await page.waitForTimeout(1000);
     while (current_page === 1 || (await this.isPageExist(page, current_page))) {
@@ -251,12 +257,18 @@ export class LinkedInScraper2 {
 
       for (let i = 0; i < count; i++) {
         await this.click(page, job_list.nth(i));
-        const urlString = await this.openLink(page);
-        if (urlString === "-1") continue;
+        const urlString = await this.clickApply(page);
 
-        const { company, job_title, location } = await this.extractJob(page);
+        // avoid overlapped job openings
+        if (urlString === "-1" || this.visited.has(urlString)) {
+          continue;
+        } else {
+          this.visited.add(urlString);
+        }
 
-        results.push({ job_title, company, location, urlString });
+        const { company, jobTitle, location } = await this.extractJob(page);
+
+        results.push({ jobTitle, company, location, urlString });
       }
       current_page++;
     }
@@ -284,34 +296,111 @@ export class LinkedInScraper2 {
       .isVisible();
   }
 
-  async openLink(page) {
-    // skip easy apply
-    const rawString = await page
-      .locator(this.selectors.applyButton, { exact: true })
-      .first()
-      .textContent();
+  // async clickApply(page) {
+  //   // skip easy apply
+  //   const rawString = await page
+  //     .locator(this.selectors.applyButton, { exact: true })
+  //     .first()
+  //     .textContent();
 
-    if (!this.selectors.allowEasyApply && rawString.includes("Easy")) {
+  //   if (!this.allowEasyApply && rawString.includes("Easy")) {
+  //     return "-1";
+  //   }
+
+  //   // page promise - reference: https://stackoverflow.com/questions/64277178/how-to-open-the-new-tab-using-playwright-ex-click-the-button-to-open-the-new-s
+  //   const pagePromise = page.context().waitForEvent("page");
+  //   await this.click(
+  //     page,
+  //     page.locator(this.selectors.applyButton, { exact: true }).first()
+  //   );
+
+  //   if (await page.getByLabel(this.selectors.popUp).isVisible()) {
+  //     // there might be an unexpected popup
+  //     await page.getByLabel(this.selectors.popUp).click();
+  //   }
+
+  //   // await page.locator(jobs_apply_button, { exact: true }).first().click();
+  //   const newPage = await pagePromise;
+
+  //   // Wait for the new page to load completely
+  //   await newPage.waitForLoadState("domcontentloaded");
+
+  //   // Close the new page after processing
+  //   await newPage.close();
+
+  //   // return the new page URL
+  //   return newPage.url();
+  // }
+
+  async clickApply(page) {
+    // Skip easy apply if not allowed
+    const applyButtonLocator = page
+      .locator(this.selectors.applyButton, { exact: true })
+      .first();
+    const rawString = await applyButtonLocator.textContent();
+
+    if (!this.allowEasyApply && rawString.includes("Easy")) {
       return "-1";
     }
 
-    // page promise - reference: https://stackoverflow.com/questions/64277178/how-to-open-the-new-tab-using-playwright-ex-click-the-button-to-open-the-new-s
-    const pagePromise = page.context().waitForEvent("page");
-    await this.click(
-      page,
-      page.locator(this.selectors.applyButton, { exact: true }).first()
-    );
-    // await page.locator(jobs_apply_button, { exact: true }).first().click();
-    const newPage = await pagePromise;
+    const maxRetries = 3;
+    let retries = 0;
+    let success = false;
+    let newPage = null;
 
-    // Wait for the new page to load completely
-    await newPage.waitForLoadState('domcontentloaded');
+    while (retries < maxRetries && !success) {
+      try {
+        // Wait for the apply button to be visible and enabled
+        await applyButtonLocator.waitFor({ state: "visible", timeout: 5000 });
+
+        // Scroll into view if needed
+        await applyButtonLocator.scrollIntoViewIfNeeded();
+
+        // Set up a promise to wait for the new page
+        const pagePromise = page.context().waitForEvent("page");
+
+        // Click the apply button
+        await applyButtonLocator.click();
+
+        // Wait for the new page to open
+        newPage = await pagePromise;
+
+        // Wait for the new page to load completely
+        await newPage.waitForLoadState("domcontentloaded");
+
+        success = true;
+      } catch (error) {
+        console.warn(`Attempt ${retries + 1} failed:`, error.message);
+
+        // Handle any unexpected popups
+        const popUpLocator = page.getByLabel(this.selectors.popUp);
+        if (await popUpLocator.isVisible()) {
+          await popUpLocator.click();
+          console.log("Closed unexpected popup.");
+        }
+
+        retries++;
+
+        // Optionally wait before retrying
+        await page.waitForTimeout(1000);
+      }
+    }
+
+    if (!success) {
+      console.error(
+        "Failed to click the apply button after multiple attempts."
+      );
+      return null;
+    }
+
+    // Get the URL before closing
+    const url = newPage.url();
 
     // Close the new page after processing
     await newPage.close();
 
-    // return the new page URL
-    return newPage.url();
+    // Return the new page URL
+    return url;
   }
 
   async extractJob(body) {
@@ -319,85 +408,15 @@ export class LinkedInScraper2 {
     const raw_job_des_div = await job_des_div.textContent();
     const descriptions = raw_job_des_div.replace(/\s{2,}/g, ";;").split(";;");
     const company = descriptions[1];
-    const job_title = descriptions[4];
+    const jobTitle = descriptions[4];
     const temp = descriptions[5].split("·");
     const location = temp[0];
-    return { company, job_title, location };
+    return { company, jobTitle, location };
+  }
+
+  async cleanUp() {
+    if (this.page) await this.page.close();
+    if (this.context) await this.context.close();
+    if (this.browser) await this.browser.close();
   }
 }
-
-// import { test, expect } from "@playwright/test";
-
-// test("test", async ({ page }) => {
-//   await page.goto("https://www.linkedin.com/jobs/");
-//   await page.getByRole("button", { name: "Preferences" }).click();
-//   await page.getByRole("link", { name: "Job alerts" }).click();
-//   await page.getByRole("button", { name: "Show 7 more" }).click();
-//   await page
-//     .locator("li:nth-child(7) > div > div > .jam-job-alert__illustration")
-//     .click({
-//       button: "right",
-//     });
-//   await page.locator("#ember288").click();
-//   await page.locator(".t-12").first().click();
-//   await page.locator("#ember288").click();
-//   await page
-//     .getByText(
-//       "software engineering Canada Filters: Internship Frequency: Daily via email and"
-//     )
-//     .click();
-//   await page.getByRole("link", { name: "quality assurance" }).click();
-//   await page.locator("html").click();
-//   await page.getByRole("button", { name: "Show 7 more" }).click();
-//   await page
-//     .getByText(
-//       "ai eningeer intern Canada Filters: Internship Frequency: Daily via email and"
-//     )
-//     .click();
-//   await page.getByRole("link", { name: "quality assurance" }).click({
-//     button: "right",
-//   });
-//   await page1.goto(
-//     "https://www.linkedin.com/jobs/search/?currentJobId=4041197512&distance=25&f_E=1&geoId=101174742&keywords=quality%20assurance"
-//   );
-//   await page.getByRole("link", { name: "quality assurance" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "quality assurance" }).click({
-//     button: "right",
-//   });
-//   await page
-//     .locator("li")
-//     .filter({ hasText: "web development intern Canada" })
-//     .getByRole("separator")
-//     .click({
-//       button: "right",
-//     });
-//   await page.getByLabel("Manage job alerts").click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "web development intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "mobile developer intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "ai eningeer intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "software development intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "frontend developer intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "fullstack developer intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "software developer intern" }).click({
-//     button: "right",
-//   });
-//   await page.getByRole("link", { name: "software engineering" }).click({
-//     button: "right",
-//   });
-// });

@@ -3,20 +3,14 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 // DEPENDENCIES
-import playwright from "playwright";
 import path from "path";
-import fs from "fs";
-import { LinkedInScraper2 } from "./src/scraper2/LinkedInScraper2.js";
-import fetch from "node-fetch";
+import { LinkedInScraper2 } from "./LinkedInScraper2.js";
 
 // FILE PATH
 const __dirname = import.meta.dirname;
 const __cookie_path = path.join(__dirname, "./playwright/.auth/user.json");
 
-// Selectors
-
-// Filters
-// Selectors
+// SELECTORS
 const SELECTORS = {
   jobListContainer: ".scaffold-layout__list-container",
   jobListItem: 'li[id^="ember"]',
@@ -29,11 +23,14 @@ const SELECTORS = {
   showResultsButton: "text=/show \\d+ result(s)?/i",
   showResultsButton2: "Apply current filters to show",
   noJobsFound: "Show 0 results",
-  popUp: "I understand the tips and"
+  popUp: "I understand the tips and",
 };
 
+// FILTERS
 const filters = new Set(["Past 24 hours", "Internship", "Canada"]);
-const scrapeBot = new LinkedInScraper2(
+
+// SCRAPER INSTANCE
+const scraper = new LinkedInScraper2(
   __cookie_path,
   filters,
   process.env.LINKEDIN_MAIL,
@@ -42,20 +39,7 @@ const scrapeBot = new LinkedInScraper2(
   process.env.LINKEDIN_JOB_URL,
   SELECTORS,
   false,
-  false,
+  false
 );
 
-await scrapeBot.setUp();
-
-const webHookUrl =
-  "https://discord.com/api/webhooks/1300884474354995292/8pcJwk8R46jPjQX1TRe9kkRp5WqIYSC-uYRYw8KvSSvlUx4u0KNQpTr7LqGNsdl3F_9O";
-
-
-
-
-
-
-// Run the function
-await scrapeBot.run();
-
-await scrapeBot.cleanUp();
+export { scraper };
