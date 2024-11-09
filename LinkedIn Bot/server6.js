@@ -40,64 +40,7 @@ for (const job of jobs) {
   }
 }
 await sendMessage(msg);
+
 await scraper.cleanUp();
 
 
-
-// const jobs = [
-//   {
-//     jobTitle: "Embedded Software Developer Co-op (4-16 months, January 2025)",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Software Engineering Intern",
-//     company: "Ada",
-//     location: "Canada",
-//   },
-//   {
-//     jobTitle: "WaveLogic Software Intern (Winter 2025)",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Engineering Software Development Intern (Winter 2025)",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "WaveLogic Software Intern (January 2025)",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Photonic Card Software Developer - New Grad 2025",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Software Engineer - Co-Op/PEY",
-//     company: "Seismic",
-//     location: "Toronto, ON",
-//   },
-//   {
-//     jobTitle: "AI Engineer and Research Co-op for Cyber Security - Winter 2025",
-//     company: "Siemens",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Software Test Engineer Co-op (8-12 months - January 2025)",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "RLS Photonics Software Engineer - New Grad 2025",
-//     company: "Ciena",
-//     location: "Ottawa, ON",
-//   },
-//   {
-//     jobTitle: "Intern, Full Stack Developer",
-//     company: "Bosa Properties",
-//     location: "Vancouver, BC",
-//   },
-// ];
