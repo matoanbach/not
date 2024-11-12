@@ -34,12 +34,12 @@ const jobs = await scraper.run();
 for (const job of jobs) {
   console.log(job);
   if (!(await existedJob(job)) && (await validateJob(job))) {
-    await createJob(job);
-    await sendJob(job);
+    // await createJob(job);
+    // await sendJob(job);
     console.log(" --- New job added");
   }
 }
-await sendMessage(msg);
+// await sendMessage(msg);
 
 await scraper.cleanUp();
 

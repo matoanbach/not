@@ -334,6 +334,7 @@ export class LinkedInScraper2 {
 
   async clickApply(page) {
     // Skip easy apply if not allowed
+    // await page.pause();
     const applyButtonLocator = page
       .locator(this.selectors.applyButton, { exact: true })
       .first();
@@ -350,37 +351,37 @@ export class LinkedInScraper2 {
 
     while (retries < maxRetries && !success) {
       try {
-        // Wait for the apply button to be visible and enabled
-        await applyButtonLocator.waitFor({ state: "visible", timeout: 5000 });
+        const rawString = await page
+          .locator(this.selectors.applyButton, { exact: true })
+          .first()
+          .textContent();
 
-        // Scroll into view if needed
-        await applyButtonLocator.scrollIntoViewIfNeeded();
+        if (!this.allowEasyApply && rawString.includes("Easy")) {
+          return "-1";
+        }
 
-        // Set up a promise to wait for the new page
+        // page promise - reference: https://stackoverflow.com/questions/64277178/how-to-open-the-new-tab-using-playwright-ex-click-the-button-to-open-the-new-s
         const pagePromise = page.context().waitForEvent("page");
+        await this.click(
+          page,
+          page.locator(this.selectors.applyButton, { exact: true }).first()
+        );
 
-        // Click the apply button
-        await applyButtonLocator.click();
+        if (await page.getByLabel(this.selectors.popUp).isVisible()) {
+          // there might be an unexpected popup
+          await page.getByLabel(this.selectors.popUp).click();
+        }
 
-        // Wait for the new page to open
+        // await page.locator(jobs_apply_button, { exact: true }).first().click();
         newPage = await pagePromise;
-
+        
         // Wait for the new page to load completely
         await newPage.waitForLoadState("domcontentloaded");
 
         success = true;
       } catch (error) {
         console.warn(`Attempt ${retries + 1} failed:`, error.message);
-
-        // Handle any unexpected popups
-        const popUpLocator = page.getByLabel(this.selectors.popUp);
-        if (await popUpLocator.isVisible()) {
-          await popUpLocator.click();
-          console.log("Closed unexpected popup.");
-        }
-
         retries++;
-
         // Optionally wait before retrying
         await page.waitForTimeout(1000);
       }
