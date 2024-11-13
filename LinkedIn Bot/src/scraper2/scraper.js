@@ -27,7 +27,7 @@ const SELECTORS = {
 };
 
 // FILTERS
-const filters = new Set(["Past week", "Internship", "Canada"]);
+const filters = new Set(["Past 24 hours", "Internship", "Canada"]);
 
 // SCRAPER INSTANCE
 const scraper = new LinkedInScraper2(

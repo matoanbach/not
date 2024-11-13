@@ -42,7 +42,7 @@ const validateJob = async (job) => {
   return response.isCSJob;
 };
 
-const sendJob = async (job) => {
+const sendJob = async (job, toWho) => {
   const message = {
     content: `
     >>>  💼 **Job Title**: ${job.jobTitle}
@@ -53,7 +53,7 @@ const sendJob = async (job) => {
 
   // Loop to retry sending a message if we hit the rate limit
   while (true) {
-    const response = await fetch(process.env.WEB_HOOK_URL, {
+    const response = await fetch(toWho, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -76,9 +76,9 @@ const sendJob = async (job) => {
   }
 };
 
-const sendMessage = async (msg) => {
+const sendMessage = async (msg, toWho) => {
   const message = { content: msg };
-  const response = await fetch(process.env.WEB_HOOK_URL, {
+  const response = await fetch(toWho, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
